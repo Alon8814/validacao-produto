@@ -7,30 +7,154 @@ st.set_page_config(
     layout="centered"
 )
 
+# Inicialização
+if "etapa" not in st.session_state:
+    st.session_state.etapa = 1
+
+if "foto_op" not in st.session_state:
+    st.session_state.foto_op = None
+
+if "foto_plaqueta" not in st.session_state:
+    st.session_state.foto_plaqueta = None
+
+
+def converter_foto(foto):
+    if foto is None:
+        return None
+
+    if hasattr(foto, "getvalue"):
+        return foto.getvalue()
+
+    return foto
+
+
 st.title("VALIDAÇÃO DE PRODUTO")
-st.write("Sistema de comparação entre OP e plaqueta do produto.")
 
-st.subheader("1. Ordem de Produção")
-st.write("Fotografe a OP usando a câmera traseira.")
+st.write("Validação entre código da OP e código da plaqueta.")
 
-foto_op = back_camera_input(key="camera_op")
+st.divider()
 
-if foto_op is not None:
-    st.success("Foto da OP capturada.")
-    st.image(foto_op)
 
-st.subheader("2. Plaqueta do Produto")
-st.write("Fotografe a plaqueta usando a câmera traseira.")
+# ==============================
+# ETAPA 1 - OP
+# ==============================
 
-foto_plaqueta = back_camera_input(key="camera_plaqueta")
+if st.session_state.etapa == 1:
 
-if foto_plaqueta is not None:
-    st.success("Foto da plaqueta capturada.")
-    st.image(foto_plaqueta)
+    st.header("1. Ordem de Produção")
 
-st.subheader("3. Resultado")
+    st.info("Fotografe a OP, mostrando claramente o campo Código do produto.")
 
-if foto_op is not None and foto_plaqueta is not None:
-    st.info("As duas fotos foram capturadas. Próxima etapa: leitura automática dos códigos.")
-else:
-    st.warning("Tire as duas fotos para continuar.")
+    foto = back_camera_input(
+        key="camera_op"
+    )
+
+    if foto is not None:
+
+        foto_bytes = converter_foto(foto)
+
+        st.image(
+            foto_bytes,
+            caption="Foto da Ordem de Produção"
+        )
+
+        if st.button(
+            "✅ CONFIRMAR FOTO DA OP",
+            use_container_width=True
+        ):
+
+            st.session_state.foto_op = foto_bytes
+            st.session_state.etapa = 2
+
+            st.rerun()
+
+
+# ==============================
+# ETAPA 2 - PLAQUETA
+# ==============================
+
+elif st.session_state.etapa == 2:
+
+    st.success("✅ Foto da OP salva")
+
+    st.image(
+        st.session_state.foto_op,
+        caption="Ordem de Produção",
+        width=300
+    )
+
+    st.divider()
+
+    st.header("2. Plaqueta do Produto")
+
+    st.info("Fotografe a plaqueta mostrando claramente a primeira linha.")
+
+    foto = back_camera_input(
+        key="camera_plaqueta"
+    )
+
+    if foto is not None:
+
+        foto_bytes = converter_foto(foto)
+
+        st.image(
+            foto_bytes,
+            caption="Foto da plaqueta"
+        )
+
+        if st.button(
+            "✅ CONFIRMAR FOTO DA PLAQUETA",
+            use_container_width=True
+        ):
+
+            st.session_state.foto_plaqueta = foto_bytes
+            st.session_state.etapa = 3
+
+            st.rerun()
+
+
+# ==============================
+# ETAPA 3 - FINAL
+# ==============================
+
+elif st.session_state.etapa == 3:
+
+    st.success("✅ Fotos capturadas com sucesso")
+
+    st.subheader("Ordem de Produção")
+
+    st.image(
+        st.session_state.foto_op,
+        width=300
+    )
+
+    st.subheader("Plaqueta")
+
+    st.image(
+        st.session_state.foto_plaqueta,
+        width=300
+    )
+
+    st.divider()
+
+    st.info(
+        "Próxima etapa: fazer a leitura automática dos códigos e realizar a comparação."
+    )
+
+
+# ==============================
+# REINICIAR
+# ==============================
+
+st.divider()
+
+if st.button(
+    "🔄 INICIAR NOVA VERIFICAÇÃO",
+    use_container_width=True
+):
+
+    st.session_state.etapa = 1
+    st.session_state.foto_op = None
+    st.session_state.foto_plaqueta = None
+
+    st.rerun()
