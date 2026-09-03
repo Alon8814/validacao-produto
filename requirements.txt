@@ -1,5 +1,6 @@
 streamlit
 streamlit-back-camera-input
-easyocr
+easyocr==1.7.2
 opencv-python-headless
-pillow
+Pillow
+numpy
