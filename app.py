@@ -13,7 +13,7 @@ st.write("Sistema de comparação entre OP e plaqueta do produto.")
 st.subheader("1. Ordem de Produção")
 st.write("Fotografe a OP usando a câmera traseira.")
 
-foto_op = back_camera_input()
+foto_op = back_camera_input(key="camera_op")
 
 if foto_op is not None:
     st.success("Foto da OP capturada.")
@@ -22,7 +22,7 @@ if foto_op is not None:
 st.subheader("2. Plaqueta do Produto")
 st.write("Fotografe a plaqueta usando a câmera traseira.")
 
-foto_plaqueta = back_camera_input()
+foto_plaqueta = back_camera_input(key="camera_plaqueta")
 
 if foto_plaqueta is not None:
     st.success("Foto da plaqueta capturada.")
