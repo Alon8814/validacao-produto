@@ -12,9 +12,9 @@ st.set_page_config(
     layout="centered"
 )
 
-# ==========================================
+# ============================================================
 # OCR
-# ==========================================
+# ============================================================
 
 @st.cache_resource
 def carregar_ocr():
@@ -23,9 +23,9 @@ def carregar_ocr():
 reader = carregar_ocr()
 
 
-# ==========================================
+# ============================================================
 # FUNÇÕES
-# ==========================================
+# ============================================================
 
 def foto_para_bytes(foto):
     if foto is None:
@@ -41,13 +41,28 @@ def ler_imagem(foto_bytes):
     imagem = Image.open(io.BytesIO(foto_bytes)).convert("RGB")
     imagem = np.array(imagem)
 
-    resultado = reader.readtext(
+    resultados = reader.readtext(
         imagem,
-        detail=0,
+        detail=1,
         paragraph=False
     )
 
-    return resultado
+    itens = []
+
+    for caixa, texto, confianca in resultados:
+        x = min(p[0] for p in caixa)
+        y = min(p[1] for p in caixa)
+
+        itens.append({
+            "texto": texto.strip(),
+            "confianca": confianca,
+            "x": x,
+            "y": y
+        })
+
+    itens = sorted(itens, key=lambda item: (item["y"], item["x"]))
+
+    return itens
 
 
 def normalizar(texto):
@@ -66,83 +81,110 @@ def codigo_valido(texto):
     if not texto:
         return False
 
-    # Tem letra e número
+    if len(texto) < 7:
+        return False
+
     if not re.search(r"[A-Z]", texto):
         return False
 
     if not re.search(r"[0-9]", texto):
         return False
 
-    # Somente letras, números e hífen
     if not re.fullmatch(r"[A-Z0-9\-]+", texto):
-        return False
-
-    # Evita números curtos, datas etc.
-    if len(texto) < 7:
         return False
 
     return True
 
 
-# ==========================================
-# PROCURAR CÓDIGO NA OP
-# ==========================================
+# ============================================================
+# REGRA DA OP
+# ============================================================
 
-def localizar_codigo_op(textos):
+def localizar_codigo_op(itens):
 
-    textos_normalizados = [normalizar(x) for x in textos]
+    # Procura especificamente pelo campo:
+    # Código do produto
 
-    # Primeiro tenta localizar a palavra PRODUTO
-    for i, texto in enumerate(textos):
+    for i, item in enumerate(itens):
 
-        if "PRODUTO" in texto.upper():
+        texto = item["texto"].upper()
 
-            # Procura nos elementos seguintes
-            for candidato in textos[i + 1:i + 6]:
+        if "PRODUTO" in texto:
 
-                candidato = normalizar(candidato)
+            y_referencia = item["y"]
 
-                if codigo_valido(candidato):
-                    return candidato
+            candidatos = []
 
-    # Segunda tentativa:
-    # preferência para códigos com hífen
-    for texto in textos_normalizados:
+            # Procura textos próximos ao campo
+            for outro in itens:
 
-        if texto and "-" in texto and codigo_valido(texto):
-            return texto
+                if outro == item:
+                    continue
 
-    # Última tentativa
-    for texto in textos_normalizados:
+                distancia_y = abs(outro["y"] - y_referencia)
 
-        if codigo_valido(texto):
-            return texto
+                if distancia_y < 120:
+
+                    candidato = normalizar(outro["texto"])
+
+                    if codigo_valido(candidato):
+
+                        candidatos.append({
+                            "codigo": candidato,
+                            "x": outro["x"],
+                            "y": outro["y"]
+                        })
+
+            if candidatos:
+
+                # Prioriza quem está mais à direita
+                candidatos = sorted(
+                    candidatos,
+                    key=lambda c: c["x"],
+                    reverse=True
+                )
+
+                return candidatos[0]["codigo"]
 
     return None
 
 
-# ==========================================
-# PROCURAR CÓDIGO NA PLAQUETA
-# ==========================================
+# ============================================================
+# REGRA DA PLAQUETA
+# ============================================================
 
-def localizar_codigo_plaqueta(textos):
+def localizar_codigo_plaqueta(itens):
 
-    # Na sua regra:
-    # primeira linha válida = código do produto
+    candidatos = []
 
-    for texto in textos:
+    for item in itens:
 
-        candidato = normalizar(texto)
+        candidato = normalizar(item["texto"])
 
         if codigo_valido(candidato):
-            return candidato
 
-    return None
+            candidatos.append({
+                "codigo": candidato,
+                "y": item["y"]
+            })
+
+    if not candidatos:
+        return None
+
+    # A regra da plaqueta é:
+    # primeira linha válida = código do produto
+
+    candidatos = sorted(
+        candidatos,
+        key=lambda c: c["y"]
+    )
+
+    return candidatos[0]["codigo"]
 
 
-# ==========================================
-# MEMÓRIA
-# ==========================================
+# ============================================================
+# SESSÃO
+# ============================================================
 
 if "etapa" not in st.session_state:
     st.session_state.etapa = 1
@@ -154,23 +196,23 @@ if "foto_plaqueta" not in st.session_state:
     st.session_state.foto_plaqueta = None
 
 
-# ==========================================
+# ============================================================
 # TELA
-# ==========================================
+# ============================================================
 
 st.title("VALIDAÇÃO DE PRODUTO")
 
 st.write(
-    "Comparação entre código da Ordem de Produção "
-    "e código da plaqueta."
+    "Comparação automática entre o código da OP "
+    "e o código da plaqueta."
 )
 
 st.divider()
 
 
-# ==========================================
-# FOTO DA OP
-# ==========================================
+# ============================================================
+# ETAPA 1 - FOTO DA OP
+# ============================================================
 
 if st.session_state.etapa == 1:
 
@@ -178,10 +220,10 @@ if st.session_state.etapa == 1:
 
     st.info(
         "Fotografe a OP mostrando claramente "
-        "o campo Código do produto."
+        "o campo 'Código do produto'."
     )
 
-    foto = back_camera_input(key="op")
+    foto = back_camera_input(key="camera_op")
 
     if foto is not None:
 
@@ -204,22 +246,22 @@ if st.session_state.etapa == 1:
             st.rerun()
 
 
-# ==========================================
-# FOTO DA PLAQUETA
-# ==========================================
+# ============================================================
+# ETAPA 2 - FOTO DA PLAQUETA
+# ============================================================
 
 elif st.session_state.etapa == 2:
 
     st.success("✅ Foto da OP salva")
 
-    st.header("2️⃣ PLAQUETA")
+    st.header("2️⃣ PLAQUETA DO PRODUTO")
 
     st.info(
-        "Fotografe a plaqueta mostrando "
-        "claramente a primeira linha."
+        "Fotografe a plaqueta mostrando claramente "
+        "a primeira linha."
     )
 
-    foto = back_camera_input(key="plaqueta")
+    foto = back_camera_input(key="camera_plaqueta")
 
     if foto is not None:
 
@@ -242,56 +284,68 @@ elif st.session_state.etapa == 2:
             st.rerun()
 
 
-# ==========================================
-# OCR + COMPARAÇÃO
-# ==========================================
+# ============================================================
+# ETAPA 3 - OCR + RESULTADO
+# ============================================================
 
 elif st.session_state.etapa == 3:
 
     st.header("3️⃣ RESULTADO")
 
-    with st.spinner("Lendo os códigos... Aguarde."):
+    with st.spinner("Lendo OP e plaqueta..."):
 
-        texto_op = ler_imagem(
+        itens_op = ler_imagem(
             st.session_state.foto_op
         )
 
-        texto_plaqueta = ler_imagem(
+        itens_plaqueta = ler_imagem(
             st.session_state.foto_plaqueta
         )
 
-        codigo_op = localizar_codigo_op(texto_op)
-
-        codigo_plaqueta = localizar_codigo_plaqueta(
-            texto_plaqueta
+        codigo_op = localizar_codigo_op(
+            itens_op
         )
 
-    st.subheader("Código identificado na OP")
+        codigo_plaqueta = localizar_codigo_plaqueta(
+            itens_plaqueta
+        )
+
+    # --------------------------------------------------------
+    # MOSTRA O QUE FOI LIDO
+    # --------------------------------------------------------
+
+    st.subheader("OP")
 
     if codigo_op:
+        st.write("Código identificado:")
         st.markdown(f"## `{codigo_op}`")
     else:
-        st.error("Código não identificado")
+        st.error(
+            "Não consegui identificar o campo Código do produto."
+        )
 
-    st.subheader("Código identificado na plaqueta")
+    st.subheader("PLAQUETA")
 
     if codigo_plaqueta:
+        st.write("Código identificado:")
         st.markdown(f"## `{codigo_plaqueta}`")
     else:
-        st.error("Código não identificado")
+        st.error(
+            "Não consegui identificar a primeira linha da plaqueta."
+        )
 
     st.divider()
 
-    # =========================
+    # --------------------------------------------------------
     # RESULTADO FINAL
-    # =========================
+    # --------------------------------------------------------
 
     if codigo_op is None or codigo_plaqueta is None:
 
         st.warning("## 🟡 ERRO DE LEITURA")
 
         st.warning(
-            "Não foi possível identificar um dos códigos. "
+            "Não realizar a liberação. "
             "Faça uma nova fotografia."
         )
 
@@ -299,42 +353,70 @@ elif st.session_state.etapa == 3:
 
         st.success("## 🟢 OK")
 
-        st.success("### PRODUTO CORRETO")
+        st.success(
+            "### PRODUTO CORRETO"
+        )
+
+        st.write("Código OP:")
+        st.code(codigo_op)
+
+        st.write("Código Plaqueta:")
+        st.code(codigo_plaqueta)
 
     else:
 
         st.error("## 🔴 NOK")
 
-        st.error("### DIVERGÊNCIA DE IDENTIFICAÇÃO")
+        st.error(
+            "### DIVERGÊNCIA DE IDENTIFICAÇÃO"
+        )
 
         st.write("Código OP:")
-
         st.code(codigo_op)
 
         st.write("Código Plaqueta:")
-
         st.code(codigo_plaqueta)
 
-        st.error("NÃO LIBERAR O PRODUTO")
+        st.error(
+            "⛔ NÃO LIBERAR O PRODUTO"
+        )
 
-    # ======================================
-    # DIAGNÓSTICO OCR
-    # ======================================
+    # --------------------------------------------------------
+    # DIAGNÓSTICO
+    # --------------------------------------------------------
 
-    with st.expander("🔎 Ver o que a câmera conseguiu ler"):
+    with st.expander(
+        "🔎 VER EXATAMENTE O QUE O OCR LEU"
+    ):
 
-        st.write("### Texto encontrado na OP")
+        st.write("### OP")
 
-        st.write(texto_op)
+        if itens_op:
+            for item in itens_op:
+                st.write(
+                    f'{item["texto"]} '
+                    f'({item["confianca"]:.0%})'
+                )
+        else:
+            st.write("Nenhum texto encontrado.")
 
-        st.write("### Texto encontrado na plaqueta")
+        st.divider()
 
-        st.write(texto_plaqueta)
+        st.write("### PLAQUETA")
+
+        if itens_plaqueta:
+            for item in itens_plaqueta:
+                st.write(
+                    f'{item["texto"]} '
+                    f'({item["confianca"]:.0%})'
+                )
+        else:
+            st.write("Nenhum texto encontrado.")
 
 
-# ==========================================
-# NOVA VERIFICAÇÃO
-# ==========================================
+# ============================================================
+# NOVA INSPEÇÃO
+# ============================================================
 
 if st.session_state.etapa > 1:
 
